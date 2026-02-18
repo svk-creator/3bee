@@ -137,16 +137,13 @@
     <details id="listPanel" open>
       <summary class="pill">Word List</summary>
       <div class="hr"></div>
-      <div class="tiny">Paste one word/term per line. This list is saved on your device (localStorage). (Seeded with the full 2026 list — you can replace it anytime.)</div>
+      <div class="tiny">Paste one word/term per line. This list is saved on your device (localStorage). (Seeded with a few words — paste your full list to load everything.)</div>
       <div style="margin-top:10px">
         <textarea id="wordList" placeholder="Paste your list here (one per line)"></textarea>
       </div>
       <div class="row" style="margin-top:10px; justify-content:space-between">
         <div class="tiny">Accents are fine (e.g., <span class="muted">aperçu</span>). Quiz checking is lenient by default (ignores accents/spaces/hyphens).</div>
-        <div class="row" style="gap:10px; justify-content:flex-end">
-          <button class="ghost" id="restoreBtn">Restore default list</button>
-          <button class="primary" id="applyBtn">Load words</button>
-        </div>
+        <button class="primary" id="applyBtn">Load words</button>
       </div>
     
     <details id="sourcePanel">
@@ -280,9 +277,6 @@
   const LS_DETAILS  = "bee_word_details_v3";
   const LS_SETTINGS = "bee_sources_v1";
 
-  // Default word list baked into this page
-  const DEFAULT_WORDS = "anosognosia\nantenatus\nAntigua\nApabhramsa\nape-ape\naper\u00e7u\naphasia\nApistogramma\napocryphal\napophyge\nApostolici\nAppaloosa\nappetitost\napr\u00e8s\nAramaic\nArdhamagadhi\nArdipithecus\nardoise\narenaceous\naretalogy\nascites\naspidistra\nastaxanthin\nastilbe\nAsura\nasylee\nattacca\nau courant\navgolemono\nazotea\nazulejo\nbailiwick\nbalbriggan\nbaleen\nbanh mi\nBernoulli effect\nBezier curve\nbhangra\nbibimbap\nbismillah\nblatherskite\nbobolink\nBolognese\nboniface";
-
   let WORDS = [];
   let detailsCache = loadJson(LS_DETAILS, {});
   let settings = loadJson(LS_SETTINGS, {
@@ -311,7 +305,6 @@
   const countEl = el("count");
   const wordListTa = el("wordList");
   const applyBtn = el("applyBtn");
-  const restoreBtn = el("restoreBtn");
   const rangeFilter = el("rangeFilter");
   const searchEl = el("search");
   const limitEl = el("limit");
@@ -445,6 +438,14 @@
     return audioEl;
   }
 
+  function normalizeAudioUrl(url){
+    if(!url) return "";
+    let u = String(url).trim();
+    if(u.startsWith("//")) u = "https:" + u;
+    if(u.startsWith("http:")) u = "https:" + u.slice(5);
+    return u;
+  }
+
   function unlockAudio(){
     const a = ensureAudioEl();
     if(audioUnlocked) return;
@@ -487,41 +488,29 @@
     }catch{}
   }
 
-  function normalizeAudioUrl(url){
-    if(!url) return "";
-    let u = String(url).trim();
-    if(u.startsWith("//")) u = "https:" + u;
-    if(u.startsWith("http:")) u = "https:" + u.slice(5);
-    return u;
-  }
-
   function playAudio(url){
-    url = normalizeAudioUrl(url);
-    if(!url) return false;
+    const u = normalizeAudioUrl(url);
+    if(!u) return false;
     try{
       const a = ensureAudioEl();
       a.pause();
       a.currentTime = 0;
-      a.src = url;
-
+      a.src = u;
       const p = a.play();
-      if(p && typeof p.catch === "function"){
-        p.catch(()=>{});
-      }
+      if(p && typeof p.catch === "function") p.catch(()=>{});
       return true;
     }catch{
       return false;
     }
   }
 
-  function mergeSources(a,b){
+function mergeSources(a,b){
     const parts = new Set(String(a||"").split("+").filter(Boolean));
     if(b) parts.add(b);
     return Array.from(parts).join("+") || "none";
   }
 
   function cleanLookupWord(raw){
-(raw){
     const w = (raw || "").trim();
     const base = w.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
     return {
@@ -863,7 +852,7 @@
       return;
     }
 
-    // Fetch audio URL in the background. If found, play it.
+    // Fetch audio URL in the background. If found, play it (more dictionary-like).
     let found = null;
 
     if(settings.useMW){
@@ -894,29 +883,8 @@
       playAudio(found.audioUrl);
     }
   }
-    }
-    if(settings.useWordnik){
-      const wn = await fetchWordnik(word).catch(()=>null);
-      if(wn?.audioUrl){
-        detailsCache[id] = { ...(detailsCache[id]||{}), audioUrl: wn.audioUrl, source: mergeSources(detailsCache[id]?.source, wn.source) };
-        saveJson(LS_DETAILS, detailsCache);
-        playAudio(wn.audioUrl);
-        return;
-      }
-    }
-    if(settings.useDictDev){
-      const got = await fetchDictionaryDev(word, { onlyAudio: true }).catch(()=>null);
-      if(got?.audioUrl){
-        detailsCache[id] = { ...(detailsCache[id]||{}), audioUrl: got.audioUrl, source: mergeSources(detailsCache[id]?.source, got.source) };
-        saveJson(LS_DETAILS, detailsCache);
-        playAudio(got.audioUrl);
-        return;
-      }
-    }
-    speakWord(word);
-  }
 
-  async function ensureDetails(id, word){
+async function ensureDetails(id, word){
     const existing = detailsCache[id] || {};
     if(existing.definition || existing.etymology || existing.audioUrl || (existing.examples && existing.examples.length) || (existing.similar && existing.similar.length)) {
       return existing;
@@ -1309,7 +1277,7 @@
   function seedIfEmpty(){
     const existing = localStorage.getItem(LS_WORDLIST);
     if(existing && existing.trim()) return;
-    localStorage.setItem(LS_WORDLIST, DEFAULT_WORDS);
+    localStorage.setItem(LS_WORDLIST, "anosognosia\nantenatus\nAntigua\nApabhramsa\nape-ape\naper\u00e7u\naphasia\nApistogramma\napocryphal\napophyge\nApostolici\nAppaloosa\nappetitost\napr\u00e8s\nAramaic\nArdhamagadhi\nArdipithecus\nardoise\narenaceous\naretalogy\nascites\naspidistra\nastaxanthin\nastilbe\nAsura\nasylee\nattacca\nau courant\navgolemono\nazotea\nazulejo\nbailiwick\nbalbriggan\nbaleen\nbanh mi\nBernoulli effect\nBezier curve\nbhangra\nbibimbap\nbismillah\nblatherskite\nbobolink\nBolognese\nboniface");
   }
 
   function loadListFromStorage(){
@@ -1319,26 +1287,16 @@
   }
 
   applyBtn.addEventListener("click", ()=>{
-    const textNow = (wordListTa.value || "");
-    if(!textNow.trim()){
-      if(!confirm("Your word list is empty. This will clear all words on this device. Continue?")) return;
+    const text = wordListTa.value || "";
+    if(!text.trim()){
+      alert("Word list is empty. Paste words first (one per line).");
+      return;
     }
-    const text = textNow;
     localStorage.setItem(LS_WORDLIST, text);
     WORDS = parseWordList(text);
     renderBrowse();
     if(mode === "quiz") nextQuiz();
   });
-
-  if(restoreBtn){
-    restoreBtn.addEventListener("click", ()=>{
-      wordListTa.value = DEFAULT_WORDS;
-      localStorage.setItem(LS_WORDLIST, DEFAULT_WORDS);
-      WORDS = parseWordList(DEFAULT_WORDS);
-      renderBrowse();
-      if(mode === "quiz") nextQuiz();
-    });
-  }
 
   rangeFilter.addEventListener("change", ()=>{ renderBrowse(); if(mode==="quiz") nextQuiz(); });
   searchEl.addEventListener("input", ()=>{ renderBrowse(); if(mode==="quiz") nextQuiz(); });
