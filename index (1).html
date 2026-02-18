@@ -1,0 +1,1430 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Spelling Bee Word Flipcards</title>
+  <style>
+    :root { --bg:#0b0f17; --card:#121a27; --muted:#9fb0c3; --text:#e8f0ff; --accent:#7dd3fc; --line:#1f2a3a; --chip:#0f1623; --ok:#86efac; --bad:#fca5a5; }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:var(--bg); color:var(--text); }
+    header{ padding:16px; border-bottom:1px solid var(--line); }
+    h1{ margin:0; font-size:18px; letter-spacing:.2px; }
+    .sub{ margin-top:6px; color:var(--muted); font-size:12px; line-height:1.35; }
+    main{ max-width:1100px; margin:0 auto; padding:16px; }
+    .controls{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+    input, select, button, textarea{
+      background:var(--chip); color:var(--text);
+      border:1px solid #243246; border-radius:10px;
+      padding:10px 12px; font-size:14px;
+    }
+    textarea{ width:100%; min-height:160px; resize:vertical; }
+    button{ cursor:pointer; }
+    button.primary{ border-color:#2a4a62; background:#0e2233; }
+    button.primary:hover{ border-color:#3a6b8f; }
+    button.ghost{ background:transparent; }
+    .pill{ display:inline-flex; gap:6px; align-items:center; padding:4px 10px; border-radius:999px; border:1px solid #253449; color:var(--muted); font-size:12px; }
+    .hr{ height:1px; background:var(--line); margin:12px 0; }
+    .grid{ display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:12px; }
+    @media (max-width: 700px){ .grid{ grid-template-columns: 1fr; } }
+    .flip{ perspective:1000px; }
+    .inner{
+      position:relative; width:100%;
+      min-height:240px;
+      transform-style:preserve-3d;
+      transition:transform .55s;
+      cursor:pointer;
+    }
+    .flip.flipped .inner{ transform: rotateY(180deg); }
+    .face{
+      position:absolute; inset:0;
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:14px;
+      backface-visibility:hidden;
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .back{ transform: rotateY(180deg); overflow:auto; }
+    .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .space{ justify-content:space-between; }
+    .word{ font-size:20px; font-weight:800; letter-spacing:.2px; }
+    .meta{ color:var(--muted); font-size:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .label{ color:var(--accent); font-weight:700; }
+    .text{ color:var(--muted); line-height:1.4; font-size:13px; white-space:pre-wrap; }
+    .examples{ color:var(--muted); font-size:13px; line-height:1.4; }
+    .muted{ color:var(--muted); }
+    .tiny{ font-size:12px; color:var(--muted); }
+    .btnicon{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:36px; height:36px;
+      border-radius:10px;
+      border:1px solid #243246;
+      background:var(--chip);
+      cursor:pointer;
+      flex:0 0 auto;
+    }
+    .btnicon:hover{ border-color:#3a6b8f; }
+    .btnicon svg{ width:18px; height:18px; }
+    .loading{ display:inline-flex; gap:8px; align-items:center; color:var(--muted); font-size:12px; }
+    .dot{ width:6px; height:6px; border-radius:999px; background:var(--accent); opacity:.9; animation:pulse 1.05s infinite; }
+    .dot:nth-child(2){ animation-delay:.15s; }
+    .dot:nth-child(3){ animation-delay:.3s; }
+    @keyframes pulse{ 0%,100%{ transform:translateY(0); opacity:.5;} 50%{ transform:translateY(-3px); opacity:1;} }
+    .sectionTitle{ font-size:12px; color:var(--accent); font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+    .kv{ display:flex; flex-direction:column; gap:6px; }
+    .quizWrap{ max-width:760px; margin:0 auto; }
+    .center{ text-align:center; }
+    .ok{ color:var(--ok); }
+    .bad{ color:var(--bad); }
+    .hint{ font-size:12px; color:var(--muted); line-height:1.35; }
+    .progress{ display:flex; gap:10px; align-items:center; color:var(--muted); font-size:12px; }
+    .bar{ flex:1; height:8px; background:#101826; border:1px solid #243246; border-radius:999px; overflow:hidden; }
+    .bar > div{ height:100%; background:var(--accent); width:0%; }
+    .quizInputRow{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .quizInputRow input{ flex:1; min-width:180px; }
+    .status{ font-size:13px; }
+    .status.ok{ color:var(--ok); }
+    .status.bad{ color:var(--bad); }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Spelling Bee Word Flipcards</h1>
+    <div class="sub">
+      Browse mode: tap any card to flip. Quiz mode: listen (mic), type the spelling, press <b>Check</b>. Flip to see the correct spelling + all details.
+    </div>
+  </header>
+
+  <main>
+    <div class="controls">
+      <button class="primary" id="modeBtn">Switch to Quiz</button>
+
+      <select id="rangeFilter" title="Letter range">
+        <option value="all">All</option>
+        <option value="A-D">A–D</option>
+        <option value="E-H">E–H</option>
+        <option value="I-L">I–L</option>
+        <option value="M-P">M–P</option>
+        <option value="Q-T">Q–T</option>
+        <option value="U-Z">U–Z</option>
+      </select>
+
+      <input id="search" placeholder="Search word (e.g., aphasia)" style="flex:1; min-width:200px" />
+
+      <select id="limit" title="How many cards to render">
+        <option value="80">Show 80</option>
+        <option value="160">Show 160</option>
+        <option value="320">Show 320</option>
+        <option value="99999">Show all</option>
+      </select>
+
+      <button class="ghost" id="preloadBtn">Preload details</button>
+      <button class="ghost" id="cancelBtn" disabled>Cancel</button>
+      <button class="ghost" id="exportBtn">Export JSON</button>
+      <button class="ghost" id="clearCacheBtn">Clear details cache</button>
+    </div>
+
+    <div id="preloadStatus" style="display:none" class="progress">
+      <span id="preloadText">—</span>
+      <div class="bar"><div id="preloadBar"></div></div>
+    </div>
+
+    <details id="listPanel" open>
+      <summary class="pill">Word List</summary>
+      <div class="hr"></div>
+      <div class="tiny">Paste one word/term per line. This list is saved on your device (localStorage). (Seeded with the full 2026 list — you can replace it anytime.)</div>
+      <div style="margin-top:10px">
+        <textarea id="wordList" placeholder="Paste your list here (one per line)"></textarea>
+      </div>
+      <div class="row" style="margin-top:10px; justify-content:space-between">
+        <div class="tiny">Accents are fine (e.g., <span class="muted">aperçu</span>). Quiz checking is lenient by default (ignores accents/spaces/hyphens).</div>
+        <div class="row" style="gap:10px; justify-content:flex-end">
+          <button class="ghost" id="restoreBtn">Restore default list</button>
+          <button class="primary" id="applyBtn">Load words</button>
+        </div>
+      </div>
+    
+    <details id="sourcePanel">
+      <summary class="pill">Sources & API Keys</summary>
+      <div class="hr"></div>
+      <div class="tiny">
+        Default sources are free + work from a static HTML file:
+        <b>Wiktionary</b> (etymology), <b>dictionaryapi.dev</b> (definitions/examples/audio), and <b>Datamuse</b> (similar words).
+        Optional registered APIs: <b>Merriam-Webster</b> and <b>Wordnik</b>.
+        <br><br>
+        <b>Note:</b> If you paste an API key into this page and host it publicly, that key is visible to anyone who can view the page source.
+        For Merriam-Webster, browsers often block direct calls due to CORS; a tiny server/proxy is usually needed.
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="row" style="align-items:flex-start">
+        <label class="tiny" style="display:flex; gap:8px; align-items:center">
+          <input type="checkbox" id="srcDictDev" />
+          Use dictionaryapi.dev (definition + examples + audio)
+        </label>
+
+        <label class="tiny" style="display:flex; gap:8px; align-items:center">
+          <input type="checkbox" id="srcWiktionary" />
+          Use Wiktionary (etymology + roots)
+        </label>
+
+        <label class="tiny" style="display:flex; gap:8px; align-items:center">
+          <input type="checkbox" id="srcDatamuse" />
+          Use Datamuse (similar words)
+        </label>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="row" style="align-items:flex-start">
+        <label class="tiny" style="display:flex; gap:8px; align-items:center">
+          <input type="checkbox" id="srcWordnik" />
+          Use Wordnik (definition/examples/etymology/audio) — requires API key
+        </label>
+        <input id="wordnikKey" placeholder="Wordnik API key (optional)" style="flex:1; min-width:240px" />
+      </div>
+
+      <div class="row" style="align-items:flex-start">
+        <label class="tiny" style="display:flex; gap:8px; align-items:center">
+          <input type="checkbox" id="srcMW" />
+          Use Merriam-Webster Dictionary API — requires API key (and usually a proxy)
+        </label>
+        <input id="mwKey" placeholder="Merriam-Webster API key (optional)" style="flex:1; min-width:240px" />
+      </div>
+
+      <div class="row" style="align-items:flex-start">
+        <input id="mwDict" placeholder="MW dict: collegiate (default)" style="min-width:220px" />
+        <input id="mwProxy" placeholder="MW proxy URL (recommended). Example: https://your.site/api/mw" style="flex:1; min-width:260px" />
+      </div>
+
+      <div class="row" style="justify-content:space-between; margin-top:10px">
+        <div class="tiny">Save applies immediately (new flips/quiz will use your choices).</div>
+        <button class="primary" id="saveSourcesBtn">Save sources</button>
+      </div>
+    </details>
+
+</details>
+
+    <div id="browse" style="margin-top:14px">
+      <div class="row space">
+        <div class="tiny">Showing <span id="count">0</span> items</div>
+        <div class="tiny">Flip a card to fetch details</div>
+      </div>
+      <div style="margin-top:10px" class="grid" id="grid"></div>
+    </div>
+
+    <div id="quiz" style="display:none; margin-top:14px">
+      <div class="quizWrap">
+        <div class="row space">
+          <div class="pill">Quiz Mode</div>
+          <div class="tiny">Tap card to flip • Or use Reveal</div>
+        </div>
+        <div class="hr"></div>
+
+        <div class="flip" id="quizCard" tabindex="0" role="button" aria-label="Quiz card">
+          <div class="inner">
+            <div class="face front">
+              <div class="row space">
+                <div>
+                  <div class="word">Listen and spell</div>
+                  <div class="hint">Tap the mic, type the spelling, then press <b>Check</b>.</div>
+                </div>
+                <button class="btnicon" id="quizMic" title="Pronounce" aria-label="Pronounce">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 5a1 1 0 0 1 2 0v7a1 1 0 0 1-2 0V5z"/>
+                    <path d="M5 10v2a7 7 0 0 0 14 0v-2"/>
+                    <path d="M12 19v3"/>
+                    <path d="M8 22h8"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="quizInputRow">
+                <input id="quizInput" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Type spelling here…" />
+                <button class="primary" id="checkBtn">Check</button>
+              </div>
+
+              <div id="quizStatus" class="status muted">—</div>
+
+              <div class="meta">
+                <span class="pill">Correct: <b class="ok" id="qc">0</b></span>
+                <span class="pill">Wrong: <b class="bad" id="qw">0</b></span>
+                <span class="pill">Checked: <b id="qchecked">0</b></span>
+              </div>
+
+              <div class="hint">Tip: press <span class="mono">Enter</span> to check. Flip to see the correct spelling + details.</div>
+            </div>
+
+            <div class="face back" id="quizBack"></div>
+          </div>
+        </div>
+
+        <div class="row center" style="margin-top:14px; justify-content:center">
+          <button id="revealBtn">Reveal</button>
+          <button id="nextBtn" class="primary">Next</button>
+          <button id="resetBtn">Reset score</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+<script>
+  const LS_WORDLIST = "bee_wordlist_v1";
+  const LS_DETAILS  = "bee_word_details_v3";
+  const LS_SETTINGS = "bee_sources_v1";
+
+  // Default word list baked into this page
+  const DEFAULT_WORDS = "anosognosia\nantenatus\nAntigua\nApabhramsa\nape-ape\naper\u00e7u\naphasia\nApistogramma\napocryphal\napophyge\nApostolici\nAppaloosa\nappetitost\napr\u00e8s\nAramaic\nArdhamagadhi\nArdipithecus\nardoise\narenaceous\naretalogy\nascites\naspidistra\nastaxanthin\nastilbe\nAsura\nasylee\nattacca\nau courant\navgolemono\nazotea\nazulejo\nbailiwick\nbalbriggan\nbaleen\nbanh mi\nBernoulli effect\nBezier curve\nbhangra\nbibimbap\nbismillah\nblatherskite\nbobolink\nBolognese\nboniface";
+
+  let WORDS = [];
+  let detailsCache = loadJson(LS_DETAILS, {});
+  let settings = loadJson(LS_SETTINGS, {
+    useDictDev: true,
+    useWiktionary: true,
+    useDatamuse: true,
+    useWordnik: false,
+    wordnikKey: "",
+    useMW: false,
+    mwKey: "",
+    mwDict: "collegiate",
+    mwProxy: "" // recommended
+  });
+
+  let mode = "browse";
+
+  let quizCurrent = null;
+  let quizCorrect = 0, quizWrong = 0, quizChecked = 0;
+  let quizAttempt = "";
+  let quizResult = null; // true/false/null
+
+  let preloadCancel = false;
+
+  const el = (id) => document.getElementById(id);
+  const grid = el("grid");
+  const countEl = el("count");
+  const wordListTa = el("wordList");
+  const applyBtn = el("applyBtn");
+  const restoreBtn = el("restoreBtn");
+  const rangeFilter = el("rangeFilter");
+  const searchEl = el("search");
+  const limitEl = el("limit");
+  const modeBtn = el("modeBtn");
+  const exportBtn = el("exportBtn");
+  const clearCacheBtn = el("clearCacheBtn");
+  const preloadBtn = el("preloadBtn");
+  const cancelBtn = el("cancelBtn");
+
+  const preloadStatus = el("preloadStatus");
+  const preloadText = el("preloadText");
+  const preloadBar = el("preloadBar");
+
+  const browseWrap = el("browse");
+  const quizWrap = el("quiz");
+
+  const quizCard = el("quizCard");
+  const quizBack = el("quizBack");
+  const quizMicBtn = el("quizMic");
+  const quizInput = el("quizInput");
+  const checkBtn = el("checkBtn");
+  const quizStatus = el("quizStatus");
+  const qcEl = el("qc");
+  const qwEl = el("qw");
+  const qcheckedEl = el("qchecked");
+
+  const revealBtn = el("revealBtn");
+  const nextBtn = el("nextBtn");
+  const resetBtn = el("resetBtn");
+
+  // source panel
+  const srcDictDev = el("srcDictDev");
+  const srcWiktionary = el("srcWiktionary");
+  const srcDatamuse = el("srcDatamuse");
+  const srcWordnik = el("srcWordnik");
+  const srcMW = el("srcMW");
+  const wordnikKeyEl = el("wordnikKey");
+  const mwKeyEl = el("mwKey");
+  const mwDictEl = el("mwDict");
+  const mwProxyEl = el("mwProxy");
+  const saveSourcesBtn = el("saveSourcesBtn");
+
+  function loadJson(key, fallback){
+    try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; }
+  }
+  function saveJson(key, obj){ localStorage.setItem(key, JSON.stringify(obj)); }
+
+  function applySettingsToUI(){
+    if(!srcDictDev) return;
+    srcDictDev.checked = !!settings.useDictDev;
+    srcWiktionary.checked = !!settings.useWiktionary;
+    srcDatamuse.checked = !!settings.useDatamuse;
+    srcWordnik.checked = !!settings.useWordnik;
+    srcMW.checked = !!settings.useMW;
+    wordnikKeyEl.value = settings.wordnikKey || "";
+    mwKeyEl.value = settings.mwKey || "";
+    mwDictEl.value = settings.mwDict || "collegiate";
+    mwProxyEl.value = settings.mwProxy || "";
+  }
+
+  function saveSettingsFromUI(){
+    settings.useDictDev = !!srcDictDev.checked;
+    settings.useWiktionary = !!srcWiktionary.checked;
+    settings.useDatamuse = !!srcDatamuse.checked;
+    settings.useWordnik = !!srcWordnik.checked;
+    settings.wordnikKey = (wordnikKeyEl.value || "").trim();
+    settings.useMW = !!srcMW.checked;
+    settings.mwKey = (mwKeyEl.value || "").trim();
+    settings.mwDict = (mwDictEl.value || "collegiate").trim() || "collegiate";
+    settings.mwProxy = (mwProxyEl.value || "").trim();
+    saveJson(LS_SETTINGS, settings);
+  }
+
+  if(saveSourcesBtn){
+    saveSourcesBtn.addEventListener("click", ()=>{
+      saveSettingsFromUI();
+      renderBrowse();
+      if(mode === "quiz") nextQuiz();
+      alert("Saved. New flips/quiz will use your sources.");
+    });
+  }
+
+  function slugify(s){
+    return (s || "")
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "") || "item";
+  }
+  function firstAlphaLetter(word){
+    const m = (word || "").toUpperCase().match(/[A-Z]/);
+    return m ? m[0] : "#";
+  }
+  function inRange(word, range){
+    if(range === "all") return true;
+    const L = firstAlphaLetter(word);
+    const [a,b] = range.split("-");
+    return L >= a && L <= b;
+  }
+  function matchesSearch(word){
+    const q = (searchEl.value || "").trim().toLowerCase();
+    if(!q) return true;
+    return word.toLowerCase().includes(q);
+  }
+  function filteredWords(){
+    const range = rangeFilter.value;
+    return WORDS.filter(w => inRange(w.word, range) && matchesSearch(w.word));
+  }
+  function escapeHtml(str){
+    return (str ?? "").toString()
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+
+  // pronunciation
+  // iOS Safari blocks *asynchronous* audio.play() unless audio is "unlocked" by a user gesture.
+  // We unlock once using a tiny silent WAV so later pronunciations can play reliably.
+  let audioEl = null;
+  let audioUnlocked = false;
+  let pronounceTicket = 0;
+
+  function ensureAudioEl(){
+    if(audioEl) return audioEl;
+    audioEl = new Audio();
+    audioEl.preload = "auto";
+    audioEl.crossOrigin = "anonymous";
+    return audioEl;
+  }
+
+  function unlockAudio(){
+    const a = ensureAudioEl();
+    if(audioUnlocked) return;
+
+    // Very small silent WAV
+    const silentWav = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=";
+    const prevVol = a.volume;
+    a.volume = 0;
+    a.src = silentWav;
+
+    const p = a.play();
+    if(p && typeof p.then === "function"){
+      p.then(()=>{
+        a.pause();
+        a.currentTime = 0;
+        a.volume = prevVol;
+        audioUnlocked = true;
+      }).catch(()=>{
+        a.volume = prevVol;
+      });
+    } else {
+      try{
+        a.pause();
+        a.currentTime = 0;
+        a.volume = prevVol;
+        audioUnlocked = true;
+      }catch{
+        a.volume = prevVol;
+      }
+    }
+  }
+
+  function speakWord(text){
+    if(!("speechSynthesis" in window)) return;
+    try{
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.95;
+      window.speechSynthesis.speak(u);
+    }catch{}
+  }
+
+  function normalizeAudioUrl(url){
+    if(!url) return "";
+    let u = String(url).trim();
+    if(u.startsWith("//")) u = "https:" + u;
+    if(u.startsWith("http:")) u = "https:" + u.slice(5);
+    return u;
+  }
+
+  function playAudio(url){
+    url = normalizeAudioUrl(url);
+    if(!url) return false;
+    try{
+      const a = ensureAudioEl();
+      a.pause();
+      a.currentTime = 0;
+      a.src = url;
+
+      const p = a.play();
+      if(p && typeof p.catch === "function"){
+        p.catch(()=>{});
+      }
+      return true;
+    }catch{
+      return false;
+    }
+  }
+
+  function mergeSources(a,b){
+    const parts = new Set(String(a||"").split("+").filter(Boolean));
+    if(b) parts.add(b);
+    return Array.from(parts).join("+") || "none";
+  }
+
+  function cleanLookupWord(raw){
+(raw){
+    const w = (raw || "").trim();
+    const base = w.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+    return {
+      lower: w.toLowerCase(),
+      ascii: base.toLowerCase(),
+      simple: base.toLowerCase().replace(/[^a-z'-]/g, " ").trim().split(/\s+/)[0] || base.toLowerCase()
+    };
+  }
+
+  // ---- dictionaryapi.dev ----
+  async function fetchDictionaryDev(word, opts={}) {
+    const variants = cleanLookupWord(word);
+    const tries = [variants.lower, variants.ascii, variants.simple].filter((v,i,a)=>v && a.indexOf(v)===i);
+
+    for(const q of tries){
+      const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(q)}`;
+      const res = await fetch(url);
+      if(!res.ok) continue;
+      const data = await res.json();
+      const entry = Array.isArray(data) ? data[0] : null;
+      if(!entry) continue;
+
+      let audioUrl = "";
+      const phon = Array.isArray(entry.phonetics) ? entry.phonetics : [];
+      for(const p of phon){
+        if(p?.audio && typeof p.audio === "string" && p.audio.trim()){ audioUrl = p.audio.trim(); break; }
+      }
+      if(opts.onlyAudio) return { audioUrl: normalizeAudioUrl(audioUrl), source:"dictionaryapi.dev" };
+
+      let definition = "";
+      const examples = [];
+      const meanings = Array.isArray(entry.meanings) ? entry.meanings : [];
+      for(const m of meanings){
+        const defs = Array.isArray(m.definitions) ? m.definitions : [];
+        for(const d of defs){
+          if(!definition && d?.definition) definition = d.definition;
+          if(d?.example && examples.length < 6) examples.push(d.example);
+        }
+      }
+      return { definition, examples, audioUrl: normalizeAudioUrl(audioUrl), source:"dictionaryapi.dev" };
+    }
+    return null;
+  }
+
+  // ---- Wiktionary (MediaWiki API) ----
+  // We fetch rendered HTML (prop=text) instead of raw wikitext so templates resolve properly.
+  async function fetchWiktionarySectionHtml(pageTitle, sectionIndex){
+    const base = "https://en.wiktionary.org/w/api.php?origin=*&format=json";
+    const url = `${base}&action=parse&page=${encodeURIComponent(pageTitle)}&prop=text&section=${encodeURIComponent(sectionIndex)}`;
+    const res = await fetch(url);
+    if(!res.ok) return "";
+    const json = await res.json();
+    return (json?.parse?.text?.["*"] && typeof json.parse.text["*"] === "string") ? json.parse.text["*"] : "";
+  }
+
+  function htmlToText(html){
+    if(!html) return "";
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    // Remove references/superscripts that add noise
+    div.querySelectorAll("sup.reference, .mw-editsection, .mw-empty-elt").forEach(n => n.remove());
+    const t = (div.innerText || "").replace(/\u00a0/g, " ");
+    return t.replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  function cleanEtymologyText(t){
+    if(!t) return "";
+    // Remove headings like "Etymology" that may appear in extracted text
+    t = t.replace(/^\s*Etymology\s*$/gmi, "").trim();
+    // Drop empty "From ." / "From ," artifacts
+    t = t.replace(/^\s*From\s*[\.\,;:]\s*$/gmi, "").trim();
+    // Collapse weird artifacts
+    t = t.replace(/\n{3,}/g, "\n\n").trim();
+    return t;
+  }
+
+  function extractDefsAndExamplesFromSectionHtml(sectionHtml){
+    const div = document.createElement("div");
+    div.innerHTML = sectionHtml || "";
+
+    // Definitions are typically in the first ordered list in a POS section
+    const ol = div.querySelector("ol");
+    const defs = [];
+    const examples = [];
+
+    if(ol){
+      const lis = Array.from(ol.children).filter(n => n.tagName === "LI");
+      for(const li of lis){
+        // definition text = LI text minus nested lists (examples/quotations)
+        const clone = li.cloneNode(true);
+        clone.querySelectorAll("ol, ul, dl, table").forEach(n => n.remove());
+        let def = (clone.textContent || "").replace(/\s+/g, " ").trim();
+        if(def) defs.push(def);
+
+        // examples: grab definition's dl/dd and/or nested ul/li if present
+        li.querySelectorAll("dl dd, ul li").forEach(node => {
+          const ex = (node.textContent || "").replace(/\s+/g, " ").trim();
+          if(ex && examples.length < 6) examples.push(ex);
+        });
+
+        if(defs.length >= 3) break;
+      }
+    }
+
+    return { defs, examples };
+  }
+
+  async function fetchWiktionaryData(word){
+    const title = (word || "").trim();
+    if(!title) return null;
+
+    const base = "https://en.wiktionary.org/w/api.php?origin=*&format=json";
+    const secUrl = `${base}&action=parse&page=${encodeURIComponent(title)}&prop=sections`;
+    const secRes = await fetch(secUrl);
+    if(!secRes.ok) return null;
+    const secJson = await secRes.json();
+    const sections = secJson?.parse?.sections;
+    if(!Array.isArray(sections)) return null;
+
+    // 1) Etymology section (prefer first "Etymology" on the page)
+    let etyIndex = null;
+    for(const s of sections){
+      const line = (s?.line || "").toLowerCase();
+      if(line === "etymology" || line.startsWith("etymology ")){ etyIndex = s?.index; break; }
+    }
+
+    let etymology = "";
+    let rootGuess = "";
+    if(etyIndex){
+      const html = await fetchWiktionarySectionHtml(title, etyIndex);
+      etymology = cleanEtymologyText(htmlToText(html));
+      const fromMatch = etymology.match(/(?:From|Borrowed from|Ultimately from)\s+([^\.\n;]+)/i);
+      rootGuess = fromMatch ? fromMatch[1].trim() : "";
+    }
+
+    // 2) Definitions/examples (English, first POS section)
+    let definition = "";
+    let examples = [];
+
+    // Find "English" section, then the first POS section under it
+    const englishIdx = sections.findIndex(s => (s?.line || "").toLowerCase() === "english");
+    if(englishIdx >= 0){
+      const eng = sections[englishIdx];
+      const engLevel = eng?.toclevel ?? 2;
+
+      const POS = new Set([
+        "noun","verb","adjective","adverb","proper noun","interjection",
+        "preposition","conjunction","determiner","pronoun","numeral","article"
+      ]);
+
+      let posSection = null;
+      for(let i=englishIdx+1; i<sections.length; i++){
+        const s = sections[i];
+        const lvl = s?.toclevel ?? 99;
+        if(lvl <= engLevel) break; // next language / out of English
+        const line = (s?.line || "").toLowerCase();
+        if(POS.has(line)){
+          posSection = s;
+          break;
+        }
+      }
+
+      if(posSection?.index){
+        const posHtml = await fetchWiktionarySectionHtml(title, posSection.index);
+        const parsed = extractDefsAndExamplesFromSectionHtml(posHtml);
+        if(parsed.defs?.length) definition = parsed.defs[0];
+        if(parsed.examples?.length) examples = parsed.examples.slice(0,6);
+      }
+    }
+
+    if(!(etymology || rootGuess || definition || (examples && examples.length))){
+      return null;
+    }
+    return { etymology, root: rootGuess, definition, examples, source:"wiktionary" };
+  }
+// ---- Datamuse ----
+  async function fetchSimilarWords(word){
+    const base = cleanLookupWord(word).simple || cleanLookupWord(word).ascii || cleanLookupWord(word).lower;
+    if(!base) return [];
+    const url = `https://api.datamuse.com/words?ml=${encodeURIComponent(base)}&max=8`;
+    const res = await fetch(url);
+    if(!res.ok) return [];
+    const data = await res.json();
+    if(!Array.isArray(data)) return [];
+    return data.map(x => x?.word).filter(Boolean).slice(0,8);
+  }
+
+  // ---- Merriam-Webster Dictionary API (optional) ----
+  function mwAudioUrl(audio){
+    if(!audio) return "";
+    let subdir = "";
+    if(audio.startsWith("bix")) subdir = "bix";
+    else if(audio.startsWith("gg")) subdir = "gg";
+    else if(/^[0-9_]/.test(audio)) subdir = "number";
+    else subdir = audio[0].toLowerCase();
+    return `https://media.merriam-webster.com/audio/prons/en/us/mp3/${subdir}/${audio}.mp3`;
+  }
+  function stripMwTokens(s){
+    if(!s) return "";
+    return String(s)
+      .replaceAll("{it}","").replaceAll("{/it}","")
+      .replaceAll("{sc}","").replaceAll("{/sc}","")
+      .replaceAll("{b}","").replaceAll("{/b}","")
+      .replaceAll("{inf}","").replaceAll("{/inf}","")
+      .replaceAll("{ldquo}","“").replaceAll("{rdquo}","”")
+      .replaceAll("{bc}",": ")
+      .replace(/\{[^}]+\}/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  function mwRequestUrl(word){
+    const dict = encodeURIComponent(settings.mwDict || "collegiate");
+    const w = encodeURIComponent(word);
+    const key = encodeURIComponent(settings.mwKey || "");
+    const proxy = (settings.mwProxy || "").trim().replace(/\/+$/,"");
+    if(proxy){
+      const qp = `word=${w}&dict=${dict}` + (settings.mwKey ? `&key=${key}` : "");
+      return `${proxy}?${qp}`;
+    }
+    if(!settings.mwKey) return "";
+    return `https://www.dictionaryapi.com/api/v3/references/${dict}/json/${w}?key=${key}`;
+  }
+  async function fetchMerriamWebster(word){
+    const url = mwRequestUrl(word);
+    if(!url) return null;
+    const res = await fetch(url);
+    if(!res.ok) return null;
+    const data = await res.json();
+    if(!Array.isArray(data) || !data.length) return null;
+    const entry = data.find(x => x && typeof x === "object" && x.meta) || null;
+    if(!entry) return null;
+
+    let definition = "";
+    if(Array.isArray(entry.shortdef) && entry.shortdef.length) definition = entry.shortdef[0];
+
+    const examples = [];
+    const suppl = entry.suppl;
+    if(suppl?.examples && Array.isArray(suppl.examples)){
+      for(const ex of suppl.examples){
+        const t = ex?.t ? stripMwTokens(ex.t) : "";
+        if(t) examples.push(t);
+        if(examples.length >= 6) break;
+      }
+    }
+
+    let etymology = "";
+    if(Array.isArray(entry.et)){
+      const parts = [];
+      for(const chunk of entry.et){
+        if(Array.isArray(chunk) && chunk[0] === "text" && chunk[1]) parts.push(stripMwTokens(chunk[1]));
+      }
+      etymology = parts.filter(Boolean).join(" ").trim();
+    }
+
+    let audioUrl = "";
+    const prs = entry?.hwi?.prs;
+    if(Array.isArray(prs) && prs.length){
+      const snd = prs.find(p => p?.sound?.audio)?.sound?.audio || prs[0]?.sound?.audio || "";
+      audioUrl = mwAudioUrl(snd);
+    }
+
+    return {
+      definition: definition ? stripMwTokens(definition) : "",
+      examples,
+      etymology,
+      root: "",
+      audioUrl: normalizeAudioUrl(audioUrl),
+      source:"merriam-webster"
+    };
+  }
+
+  // ---- Wordnik (optional) ----
+  async function fetchWordnik(word){
+    const key = (settings.wordnikKey || "").trim();
+    if(!key) return null;
+
+    const w = encodeURIComponent(cleanLookupWord(word).simple || word.trim());
+    const base = `https://api.wordnik.com/v4/word.json/${w}`;
+    const q = `api_key=${encodeURIComponent(key)}&useCanonical=true`;
+
+    const defUrl = `${base}/definitions?limit=3&includeRelated=false&includeTags=false&${q}`;
+    const exUrl  = `${base}/examples?limit=6&includeDuplicates=false&${q}`;
+    const etyUrl = `${base}/etymologies?${q}`;
+    const audUrl = `${base}/audio?limit=1&${q}`;
+
+    const [defs, exs, etys, auds] = await Promise.all([
+      fetch(defUrl).then(r=>r.ok?r.json():null).catch(()=>null),
+      fetch(exUrl).then(r=>r.ok?r.json():null).catch(()=>null),
+      fetch(etyUrl).then(r=>r.ok?r.json():null).catch(()=>null),
+      fetch(audUrl).then(r=>r.ok?r.json():null).catch(()=>null),
+    ]);
+
+    let definition = "";
+    if(Array.isArray(defs)){
+      const best = defs.find(d => d?.text) || defs[0];
+      if(best?.text) definition = String(best.text).replace(/\s+/g," ").trim();
+    }
+
+    const examples = [];
+    const exList = exs?.examples;
+    if(Array.isArray(exList)){
+      for(const e of exList){
+        if(e?.text){
+          examples.push(String(e.text).replace(/\s+/g," ").trim());
+          if(examples.length >= 6) break;
+        }
+      }
+    }
+
+    let etymology = "";
+    if(Array.isArray(etys) && etys.length){
+      etymology = String(etys[0]).replace(/\s+/g," ").trim();
+    }
+
+    let audioUrl = "";
+    if(Array.isArray(auds) && auds.length){
+      const fileUrl = auds[0]?.fileUrl || auds[0]?.fileUrlHttps || "";
+      if(fileUrl) audioUrl = fileUrl;
+    }
+
+    if(!(definition || examples.length || etymology || audioUrl)) return null;
+
+    return { definition, examples, etymology, root:"", audioUrl: normalizeAudioUrl(audioUrl), source:"wordnik" };
+  }
+
+  async function pronounce(id, word){
+    // Called from a click (user gesture). Unlock audio now so iOS can play later.
+    unlockAudio();
+
+    // Speak immediately (fast + reliable on mobile).
+    speakWord(word);
+
+    const myTicket = ++pronounceTicket;
+
+    const d = detailsCache[id] || {};
+    if(d?.audioUrl){
+      try{ window.speechSynthesis?.cancel?.(); }catch{}
+      playAudio(d.audioUrl);
+      return;
+    }
+
+    // Fetch audio URL in the background. If found, play it.
+    let found = null;
+
+    if(settings.useMW){
+      const mw = await fetchMerriamWebster(word).catch(()=>null);
+      if(myTicket !== pronounceTicket) return;
+      if(mw?.audioUrl) found = mw;
+    }
+    if(!found && settings.useWordnik){
+      const wn = await fetchWordnik(word).catch(()=>null);
+      if(myTicket !== pronounceTicket) return;
+      if(wn?.audioUrl) found = wn;
+    }
+    if(!found && settings.useDictDev){
+      const got = await fetchDictionaryDev(word, { onlyAudio: true }).catch(()=>null);
+      if(myTicket !== pronounceTicket) return;
+      if(got?.audioUrl) found = got;
+    }
+
+    if(found?.audioUrl){
+      detailsCache[id] = {
+        ...(detailsCache[id]||{}),
+        audioUrl: normalizeAudioUrl(found.audioUrl),
+        source: mergeSources(detailsCache[id]?.source, found.source)
+      };
+      saveJson(LS_DETAILS, detailsCache);
+
+      try{ window.speechSynthesis?.cancel?.(); }catch{}
+      playAudio(found.audioUrl);
+    }
+  }
+    }
+    if(settings.useWordnik){
+      const wn = await fetchWordnik(word).catch(()=>null);
+      if(wn?.audioUrl){
+        detailsCache[id] = { ...(detailsCache[id]||{}), audioUrl: wn.audioUrl, source: mergeSources(detailsCache[id]?.source, wn.source) };
+        saveJson(LS_DETAILS, detailsCache);
+        playAudio(wn.audioUrl);
+        return;
+      }
+    }
+    if(settings.useDictDev){
+      const got = await fetchDictionaryDev(word, { onlyAudio: true }).catch(()=>null);
+      if(got?.audioUrl){
+        detailsCache[id] = { ...(detailsCache[id]||{}), audioUrl: got.audioUrl, source: mergeSources(detailsCache[id]?.source, got.source) };
+        saveJson(LS_DETAILS, detailsCache);
+        playAudio(got.audioUrl);
+        return;
+      }
+    }
+    speakWord(word);
+  }
+
+  async function ensureDetails(id, word){
+    const existing = detailsCache[id] || {};
+    if(existing.definition || existing.etymology || existing.audioUrl || (existing.examples && existing.examples.length) || (existing.similar && existing.similar.length)) {
+      return existing;
+    }
+
+    const tasks = [];
+    if(settings.useMW) tasks.push(fetchMerriamWebster(word).catch(()=>null));
+    if(settings.useWordnik) tasks.push(fetchWordnik(word).catch(()=>null));
+    if(settings.useDictDev) tasks.push(fetchDictionaryDev(word).catch(()=>null));
+    if(settings.useWiktionary) tasks.push(fetchWiktionaryData(word).catch(()=>null));
+
+    const simTask = settings.useDatamuse ? fetchSimilarWords(word).catch(()=>[]) : Promise.resolve([]);
+
+    const results = await Promise.all([...tasks, simTask]);
+    const sim = results.pop() || [];
+    const bySource = results.filter(Boolean);
+
+    const mw = bySource.find(x => x.source === "merriam-webster") || null;
+    const wn = bySource.find(x => x.source === "wordnik") || null;
+    const dd = bySource.find(x => x.source === "dictionaryapi.dev") || null;
+    const wk = bySource.find(x => x.source === "wiktionary") || null;
+
+    const pickFirst = (field, sources, isArray=false) => {
+      for(const src of sources){
+        if(!src) continue;
+        if(isArray){
+          if(Array.isArray(src[field]) && src[field].length) return src[field];
+        } else {
+          if(src[field]) return src[field];
+        }
+      }
+      return isArray ? [] : "";
+    };
+
+    const definition = pickFirst("definition", [mw, wn, dd, wk], false);
+    const examples   = pickFirst("examples",   [mw, wn, dd, wk], true);
+    const audioUrl   = pickFirst("audioUrl",   [mw, wn, dd], false);
+
+    const etymology  = pickFirst("etymology", [mw, wn, wk], false);
+    const root       = pickFirst("root",      [mw, wn, wk], false);
+
+    const usedSources = [];
+    if(definition || (examples && examples.length) || audioUrl){
+      if(mw && (mw.definition || (mw.examples && mw.examples.length) || mw.audioUrl)) usedSources.push("merriam-webster");
+      else if(wn && (wn.definition || (wn.examples && wn.examples.length) || wn.audioUrl)) usedSources.push("wordnik");
+      else if(dd) usedSources.push("dictionaryapi.dev");
+      else if(wk) usedSources.push("wiktionary");
+    }
+    if(etymology || root){
+      if(mw && mw.etymology) usedSources.push("merriam-webster");
+      else if(wn && wn.etymology) usedSources.push("wordnik");
+      else if(wk) usedSources.push("wiktionary");
+    }
+    if(sim && sim.length) usedSources.push("datamuse");
+
+    const merged = {
+      definition: definition || "",
+      examples: examples || [],
+      audioUrl: audioUrl || "",
+      etymology: etymology || "",
+      root: root || "",
+      similar: sim || [],
+      source: Array.from(new Set(usedSources)).join("+") || "none"
+    };
+
+    detailsCache[id] = merged;
+    saveJson(LS_DETAILS, detailsCache);
+    return merged;
+  }
+
+  function detailsHtml(d){
+    const def = d?.definition ? escapeHtml(d.definition) : "<span class='muted'>—</span>";
+    const ety = d?.etymology ? escapeHtml(d.etymology) : "<span class='muted'>—</span>";
+    const root = d?.root ? escapeHtml(d.root) : "<span class='muted'>—</span>";
+
+    let ex = "<span class='muted'>—</span>";
+    if(d?.examples?.length){
+      ex = "<ul style='margin:6px 0 0 18px; padding:0; color:var(--muted);'>" +
+        d.examples.slice(0,6).map(e => `<li>${escapeHtml(e)}</li>`).join("") +
+      "</ul>";
+    }
+
+    const sim = (d?.similar?.length)
+      ? d.similar.map(s => `<span class="pill">${escapeHtml(s)}</span>`).join(" ")
+      : "<span class='muted'>—</span>";
+
+    const src = d?.source ? escapeHtml(d.source) : "—";
+
+    return `
+      <div class="kv">
+        <div class="sectionTitle">Etymology</div>
+        <div class="text">${ety}</div>
+      </div>
+
+      <div class="kv" style="margin-top:10px">
+        <div class="sectionTitle">Root</div>
+        <div class="text">${root}</div>
+      </div>
+
+      <div class="kv" style="margin-top:10px">
+        <div class="sectionTitle">Definition</div>
+        <div class="text">${def}</div>
+      </div>
+
+      <div class="kv" style="margin-top:10px">
+        <div class="sectionTitle">Examples (sentences)</div>
+        <div class="examples">${ex}</div>
+      </div>
+
+      <div class="kv" style="margin-top:10px">
+        <div class="sectionTitle">Similar words</div>
+        <div class="meta" style="gap:6px">${sim}</div>
+      </div>
+
+      <div class="tiny" style="margin-top:12px">Sources used: ${src}</div>
+    `;
+  }
+
+  function quizBackHtml(d, word, attempt, result){
+    const ok = result === true;
+    const bad = result === false;
+    const status = ok ? "<span class='ok'><b>Correct</b></span>" : bad ? "<span class='bad'><b>Incorrect</b></span>" : "<span class='muted'>Not checked</span>";
+    const att = attempt ? escapeHtml(attempt) : "<span class='muted'>—</span>";
+    const w = escapeHtml(word);
+
+    return `
+      <div class="kv">
+        <div class="sectionTitle">Correct spelling</div>
+        <div class="text"><b>${w}</b></div>
+      </div>
+      <div class="kv" style="margin-top:10px">
+        <div class="sectionTitle">Your attempt</div>
+        <div class="text">${att}</div>
+      </div>
+      <div class="kv" style="margin-top:10px">
+        <div class="sectionTitle">Result</div>
+        <div class="text">${status}</div>
+      </div>
+      <div style="margin-top:14px; height:1px; background:var(--line)"></div>
+      <div style="margin-top:14px">${detailsHtml(d)}</div>
+    `;
+  }
+
+  function loadingHtml(){
+    return `
+      <div class="loading">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span>Fetching details…</span>
+      </div>
+      <div class="tiny" style="margin-top:8px">Proper nouns/foreign terms may not have entries in all sources.</div>
+    `;
+  }
+
+  function makeMicButton(id, word){
+    const btn = document.createElement("button");
+    btn.className = "btnicon";
+    btn.title = "Pronounce";
+    btn.setAttribute("aria-label","Pronounce");
+    btn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M11 5a1 1 0 0 1 2 0v7a1 1 0 0 1-2 0V5z"/>
+        <path d="M5 10v2a7 7 0 0 0 14 0v-2"/>
+        <path d="M12 19v3"/>
+        <path d="M8 22h8"/>
+      </svg>
+    `;
+    btn.addEventListener("click", (e)=>{ e.stopPropagation(); pronounce(id, word); });
+    return btn;
+  }
+
+  function renderBrowse(){
+    const list = filteredWords();
+    const limit = parseInt(limitEl.value, 10) || 80;
+    const shown = list.slice(0, limit);
+
+    countEl.textContent = `${shown.length} / ${list.length}`;
+    grid.innerHTML = "";
+
+    for(const item of shown){
+      const d = detailsCache[item.id];
+
+      const card = document.createElement("div");
+      card.className = "flip";
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      card.setAttribute("aria-label", `Card for ${item.word}`);
+
+      const inner = document.createElement("div");
+      inner.className = "inner";
+
+      const front = document.createElement("div");
+      front.className = "face front";
+
+      const top = document.createElement("div");
+      top.className = "row space";
+
+      const w = document.createElement("div");
+      w.className = "word";
+      w.textContent = item.word;
+
+      const mic = makeMicButton(item.id, item.word);
+
+      top.appendChild(w);
+      top.appendChild(mic);
+
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "Tap to flip for etymology, root, definition, examples.";
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.innerHTML = `
+        <span class="pill">Letter: <b class="label">${firstAlphaLetter(item.word)}</b></span>
+        <span class="pill">${(d?.definition || d?.etymology || (d?.similar?.length)) ? "Details saved" : "No details yet"}</span>
+      `;
+
+      front.appendChild(top);
+      front.appendChild(hint);
+      front.appendChild(meta);
+
+      const back = document.createElement("div");
+      back.className = "face back";
+      back.innerHTML = d ? detailsHtml(d) : loadingHtml();
+
+      inner.appendChild(front);
+      inner.appendChild(back);
+      card.appendChild(inner);
+
+      async function flipAndLoad(){
+        const willFlipToBack = !card.classList.contains("flipped");
+        card.classList.toggle("flipped");
+        if(willFlipToBack){
+          back.innerHTML = loadingHtml();
+          const fresh = await ensureDetails(item.id, item.word);
+          back.innerHTML = detailsHtml(fresh);
+          meta.innerHTML = `
+            <span class="pill">Letter: <b class="label">${firstAlphaLetter(item.word)}</b></span>
+            <span class="pill">${(fresh?.definition || fresh?.etymology || (fresh?.similar?.length)) ? "Details saved" : "No details found"}</span>
+          `;
+        }
+      }
+
+      card.addEventListener("click", flipAndLoad);
+      card.addEventListener("keydown", (e)=>{
+        if(e.key === "Enter" || e.key === " "){
+          e.preventDefault();
+          flipAndLoad();
+        }
+      });
+
+      grid.appendChild(card);
+    }
+  }
+
+  function setMode(next){
+    mode = next;
+    const isQuiz = mode === "quiz";
+    browseWrap.style.display = isQuiz ? "none" : "block";
+    quizWrap.style.display = isQuiz ? "block" : "none";
+    modeBtn.textContent = isQuiz ? "Switch to Browse" : "Switch to Quiz";
+    if(isQuiz) nextQuiz();
+  }
+
+  function normalizeForCheck(s){
+    return (s || "")
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z]/g, "");
+  }
+
+  function updateQuizStats(){
+    qcEl.textContent = quizCorrect;
+    qwEl.textContent = quizWrong;
+    qcheckedEl.textContent = quizChecked;
+  }
+
+  function setQuizStatus(text, kind){
+    quizStatus.textContent = text || "—";
+    quizStatus.classList.remove("ok","bad","muted");
+    quizStatus.classList.add(kind || "muted");
+  }
+
+  async function nextQuiz(){
+    const list = filteredWords();
+    if(!list.length){
+      setQuizStatus("No words match your filter/search.", "muted");
+      quizBack.innerHTML = "<div class='hint'>Change the letter range or search.</div>";
+      quizCurrent = null;
+      return;
+    }
+
+    quizCurrent = list[Math.floor(Math.random()*list.length)];
+    quizAttempt = "";
+    quizResult = null;
+
+    quizInput.value = "";
+    setQuizStatus("Tap the mic, type the spelling, then press Check.", "muted");
+
+    quizCard.classList.remove("flipped");
+    quizBack.innerHTML = loadingHtml();
+
+    const d = await ensureDetails(quizCurrent.id, quizCurrent.word);
+    quizBack.innerHTML = quizBackHtml(d, quizCurrent.word, quizAttempt, quizResult);
+
+    setTimeout(()=>{ try{ quizInput.focus(); }catch{} }, 30);
+  }
+
+  async function checkSpelling(){
+    if(!quizCurrent) return;
+    const attempt = (quizInput.value || "").trim();
+    if(!attempt){
+      setQuizStatus("Type your spelling first.", "muted");
+      return;
+    }
+
+    quizAttempt = attempt;
+
+    const target = quizCurrent.word;
+    const ok = normalizeForCheck(attempt) === normalizeForCheck(target);
+
+    quizChecked++;
+    quizResult = ok;
+
+    if(ok){
+      quizCorrect++;
+      setQuizStatus("✅ Correct! Flip to review details.", "ok");
+    } else {
+      quizWrong++;
+      setQuizStatus("❌ Not quite. Flip to see the correct spelling + details.", "bad");
+    }
+    updateQuizStats();
+
+    const d = await ensureDetails(quizCurrent.id, quizCurrent.word);
+    quizBack.innerHTML = quizBackHtml(d, quizCurrent.word, quizAttempt, quizResult);
+  }
+
+  function flipQuiz(){ quizCard.classList.toggle("flipped"); }
+  quizCard.addEventListener("click", flipQuiz);
+  quizCard.addEventListener("keydown", (e)=>{
+    if(e.key === "Enter" || e.key === " "){
+      e.preventDefault();
+      flipQuiz();
+    }
+  });
+
+  [quizInput, checkBtn, quizMicBtn].forEach(node => {
+    node.addEventListener("click", (e)=> e.stopPropagation());
+  });
+
+  quizInput.addEventListener("keydown", (e)=>{
+    if(e.key === "Enter"){
+      e.preventDefault();
+      checkSpelling();
+    }
+    e.stopPropagation();
+  });
+
+  quizMicBtn.addEventListener("click", (e)=>{
+    e.stopPropagation();
+    if(quizCurrent) pronounce(quizCurrent.id, quizCurrent.word);
+  });
+
+  checkBtn.addEventListener("click", (e)=>{ e.stopPropagation(); checkSpelling(); });
+
+  revealBtn.addEventListener("click", (e)=>{ e.stopPropagation(); quizCard.classList.add("flipped"); });
+  nextBtn.addEventListener("click", (e)=>{ e.stopPropagation(); nextQuiz(); });
+  resetBtn.addEventListener("click", (e)=>{
+    e.stopPropagation();
+    quizCorrect = 0; quizWrong = 0; quizChecked = 0;
+    updateQuizStats();
+    setQuizStatus("Score reset.", "muted");
+  });
+
+  // list parsing / persistence
+  function parseWordList(text){
+    const lines = (text || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+    const seen = new Map();
+    const items = [];
+    for(const raw of lines){
+      const base = slugify(raw);
+      const n = (seen.get(base) || 0) + 1;
+      seen.set(base, n);
+      const id = n === 1 ? base : `${base}-${n}`;
+      items.push({ id, word: raw });
+    }
+    return items;
+  }
+
+  function seedIfEmpty(){
+    const existing = localStorage.getItem(LS_WORDLIST);
+    if(existing && existing.trim()) return;
+    localStorage.setItem(LS_WORDLIST, DEFAULT_WORDS);
+  }
+
+  function loadListFromStorage(){
+    const text = localStorage.getItem(LS_WORDLIST) || "";
+    wordListTa.value = text;
+    WORDS = parseWordList(text);
+  }
+
+  applyBtn.addEventListener("click", ()=>{
+    const textNow = (wordListTa.value || "");
+    if(!textNow.trim()){
+      if(!confirm("Your word list is empty. This will clear all words on this device. Continue?")) return;
+    }
+    const text = textNow;
+    localStorage.setItem(LS_WORDLIST, text);
+    WORDS = parseWordList(text);
+    renderBrowse();
+    if(mode === "quiz") nextQuiz();
+  });
+
+  if(restoreBtn){
+    restoreBtn.addEventListener("click", ()=>{
+      wordListTa.value = DEFAULT_WORDS;
+      localStorage.setItem(LS_WORDLIST, DEFAULT_WORDS);
+      WORDS = parseWordList(DEFAULT_WORDS);
+      renderBrowse();
+      if(mode === "quiz") nextQuiz();
+    });
+  }
+
+  rangeFilter.addEventListener("change", ()=>{ renderBrowse(); if(mode==="quiz") nextQuiz(); });
+  searchEl.addEventListener("input", ()=>{ renderBrowse(); if(mode==="quiz") nextQuiz(); });
+  limitEl.addEventListener("change", renderBrowse);
+
+  modeBtn.addEventListener("click", ()=> setMode(mode === "browse" ? "quiz" : "browse"));
+
+  exportBtn.addEventListener("click", ()=>{
+    const payload = {
+      generated_at: new Date().toISOString(),
+      settings,
+      words: WORDS.map(w => ({ id: w.id, word: w.word, ...(detailsCache[w.id] || {}) }))
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "bee_words_export.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 2500);
+  });
+
+  clearCacheBtn.addEventListener("click", ()=>{
+    if(confirm("Clear saved details cache? (Your word list will remain.)")){
+      detailsCache = {};
+      saveJson(LS_DETAILS, detailsCache);
+      renderBrowse();
+      if(mode === "quiz") nextQuiz();
+    }
+  });
+
+  function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+  preloadBtn.addEventListener("click", async ()=>{
+    const list = filteredWords();
+    if(!list.length) return;
+
+    preloadCancel = false;
+    cancelBtn.disabled = false;
+    preloadBtn.disabled = true;
+    preloadStatus.style.display = "flex";
+    preloadBar.style.width = "0%";
+
+    const todo = list.filter(w => {
+      const d = detailsCache[w.id] || {};
+      return !(d.definition || d.etymology || d.audioUrl || (d.examples && d.examples.length) || (d.similar && d.similar.length));
+    });
+
+    const total = todo.length || 1;
+    let done = 0;
+
+    preloadText.textContent = `Preloading ${todo.length} words…`;
+
+    for(const item of todo){
+      if(preloadCancel) break;
+      await ensureDetails(item.id, item.word);
+      done++;
+      const pct = Math.round((done/total)*100);
+      preloadBar.style.width = pct + "%";
+      preloadText.textContent = `Preloading… ${done} / ${total} (${pct}%)`;
+      await sleep(650);
+    }
+
+    preloadText.textContent = preloadCancel ? "Preload cancelled." : "Preload complete.";
+    cancelBtn.disabled = true;
+    preloadBtn.disabled = false;
+    renderBrowse();
+
+    if(mode === "quiz" && quizCurrent){
+      const d = await ensureDetails(quizCurrent.id, quizCurrent.word);
+      quizBack.innerHTML = quizBackHtml(d, quizCurrent.word, quizAttempt, quizResult);
+    }
+  });
+
+  cancelBtn.addEventListener("click", ()=>{
+    preloadCancel = true;
+    cancelBtn.disabled = true;
+  });
+
+  // init
+  seedIfEmpty();
+  loadListFromStorage();
+  applySettingsToUI();
+  renderBrowse();
+  updateQuizStats();
+</script>
+</body>
+</html>
