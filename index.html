@@ -424,22 +424,87 @@
   }
 
   // pronunciation
+  // iOS Safari blocks *asynchronous* audio.play() unless audio is "unlocked" by a user gesture.
+  // We unlock once using a tiny silent WAV so later pronunciations can play reliably.
   let audioEl = null;
+  let audioUnlocked = false;
+  let pronounceTicket = 0;
+
+  function ensureAudioEl(){
+    if(audioEl) return audioEl;
+    audioEl = new Audio();
+    audioEl.preload = "auto";
+    audioEl.crossOrigin = "anonymous";
+    return audioEl;
+  }
+
+  function unlockAudio(){
+    const a = ensureAudioEl();
+    if(audioUnlocked) return;
+
+    // Very small silent WAV
+    const silentWav = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=";
+    const prevVol = a.volume;
+    a.volume = 0;
+    a.src = silentWav;
+
+    const p = a.play();
+    if(p && typeof p.then === "function"){
+      p.then(()=>{
+        a.pause();
+        a.currentTime = 0;
+        a.volume = prevVol;
+        audioUnlocked = true;
+      }).catch(()=>{
+        a.volume = prevVol;
+      });
+    } else {
+      try{
+        a.pause();
+        a.currentTime = 0;
+        a.volume = prevVol;
+        audioUnlocked = true;
+      }catch{
+        a.volume = prevVol;
+      }
+    }
+  }
+
   function speakWord(text){
     if(!("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.95;
-    window.speechSynthesis.speak(u);
-  }
-  function playAudio(url){
     try{
-      if(!audioEl) audioEl = new Audio();
-      audioEl.pause();
-      audioEl.currentTime = 0;
-      audioEl.src = url;
-      audioEl.play().catch(()=>{});
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.95;
+      window.speechSynthesis.speak(u);
     }catch{}
+  }
+
+  function normalizeAudioUrl(url){
+    if(!url) return "";
+    let u = String(url).trim();
+    if(u.startsWith("//")) u = "https:" + u;
+    if(u.startsWith("http:")) u = "https:" + u.slice(5);
+    return u;
+  }
+
+  function playAudio(url){
+    url = normalizeAudioUrl(url);
+    if(!url) return false;
+    try{
+      const a = ensureAudioEl();
+      a.pause();
+      a.currentTime = 0;
+      a.src = url;
+
+      const p = a.play();
+      if(p && typeof p.catch === "function"){
+        p.catch(()=>{});
+      }
+      return true;
+    }catch{
+      return false;
+    }
   }
 
   function mergeSources(a,b){
@@ -449,6 +514,7 @@
   }
 
   function cleanLookupWord(raw){
+(raw){
     const w = (raw || "").trim();
     const base = w.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
     return {
@@ -476,7 +542,7 @@
       for(const p of phon){
         if(p?.audio && typeof p.audio === "string" && p.audio.trim()){ audioUrl = p.audio.trim(); break; }
       }
-      if(opts.onlyAudio) return { audioUrl, source:"dictionaryapi.dev" };
+      if(opts.onlyAudio) return { audioUrl: normalizeAudioUrl(audioUrl), source:"dictionaryapi.dev" };
 
       let definition = "";
       const examples = [];
@@ -488,7 +554,7 @@
           if(d?.example && examples.length < 6) examples.push(d.example);
         }
       }
-      return { definition, examples, audioUrl, source:"dictionaryapi.dev" };
+      return { definition, examples, audioUrl: normalizeAudioUrl(audioUrl), source:"dictionaryapi.dev" };
     }
     return null;
   }
@@ -715,7 +781,7 @@
       examples,
       etymology,
       root: "",
-      audioUrl,
+      audioUrl: normalizeAudioUrl(audioUrl),
       source:"merriam-webster"
     };
   }
@@ -771,21 +837,56 @@
 
     if(!(definition || examples.length || etymology || audioUrl)) return null;
 
-    return { definition, examples, etymology, root:"", audioUrl, source:"wordnik" };
+    return { definition, examples, etymology, root:"", audioUrl: normalizeAudioUrl(audioUrl), source:"wordnik" };
   }
 
   async function pronounce(id, word){
-    const d = detailsCache[id];
-    if(d?.audioUrl){ playAudio(d.audioUrl); return; }
+    // Called from a click (user gesture). Unlock audio now so iOS can play later.
+    unlockAudio();
+
+    // Speak immediately (fast + reliable on mobile).
+    speakWord(word);
+
+    const myTicket = ++pronounceTicket;
+
+    const d = detailsCache[id] || {};
+    if(d?.audioUrl){
+      try{ window.speechSynthesis?.cancel?.(); }catch{}
+      playAudio(d.audioUrl);
+      return;
+    }
+
+    // Fetch audio URL in the background. If found, play it.
+    let found = null;
 
     if(settings.useMW){
       const mw = await fetchMerriamWebster(word).catch(()=>null);
-      if(mw?.audioUrl){
-        detailsCache[id] = { ...(detailsCache[id]||{}), audioUrl: mw.audioUrl, source: mergeSources(detailsCache[id]?.source, mw.source) };
-        saveJson(LS_DETAILS, detailsCache);
-        playAudio(mw.audioUrl);
-        return;
-      }
+      if(myTicket !== pronounceTicket) return;
+      if(mw?.audioUrl) found = mw;
+    }
+    if(!found && settings.useWordnik){
+      const wn = await fetchWordnik(word).catch(()=>null);
+      if(myTicket !== pronounceTicket) return;
+      if(wn?.audioUrl) found = wn;
+    }
+    if(!found && settings.useDictDev){
+      const got = await fetchDictionaryDev(word, { onlyAudio: true }).catch(()=>null);
+      if(myTicket !== pronounceTicket) return;
+      if(got?.audioUrl) found = got;
+    }
+
+    if(found?.audioUrl){
+      detailsCache[id] = {
+        ...(detailsCache[id]||{}),
+        audioUrl: normalizeAudioUrl(found.audioUrl),
+        source: mergeSources(detailsCache[id]?.source, found.source)
+      };
+      saveJson(LS_DETAILS, detailsCache);
+
+      try{ window.speechSynthesis?.cancel?.(); }catch{}
+      playAudio(found.audioUrl);
+    }
+  }
     }
     if(settings.useWordnik){
       const wn = await fetchWordnik(word).catch(()=>null);
